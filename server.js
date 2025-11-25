@@ -1,16 +1,23 @@
+// Load environment variables first
+require('dotenv').config();
+console.log('Loaded JWT_SECRET:', process.env.JWT_SECRET);
+
+
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { db, User, Project, Task } = require('./database/setup');
-require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Debug log to confirm JWT secret
+console.log('JWT_SECRET:', process.env.JWT_SECRET);
+
 // Middleware
 app.use(express.json());
 
-// JWT Authentication Middleware
+// ===================== JWT AUTHENTICATION MIDDLEWARE =====================
 function requireAuth(req, res, next) {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1]; // Bearer <token>
@@ -39,7 +46,7 @@ function requireAdmin(req, res, next) {
     return res.status(403).json({ error: 'Access denied. Admin only.' });
 }
 
-// Test database connection
+// ===================== DATABASE CONNECTION =====================
 async function testConnection() {
     try {
         await db.authenticate();
@@ -50,7 +57,7 @@ async function testConnection() {
 }
 testConnection();
 
-// ===================== AUTHENTICATION ROUTES =====================
+// ===================== AUTH ROUTES =====================
 
 // Register new user
 app.post('/api/register', async (req, res) => {
@@ -61,10 +68,8 @@ app.post('/api/register', async (req, res) => {
         if (existingUser) return res.status(400).json({ error: 'User with this email already exists' });
 
         const hashedPassword = await bcrypt.hash(password, 10);
-
         const newUser = await User.create({ name, email, password: hashedPassword, role });
 
-        // Generate JWT token
         const token = jwt.sign(
             { id: newUser.id, name: newUser.name, email: newUser.email, role: newUser.role },
             process.env.JWT_SECRET,
@@ -113,17 +118,14 @@ app.post('/api/login', async (req, res) => {
 
 // Logout (stateless JWT)
 app.post('/api/logout', (req, res) => {
-    res.json({ message: 'Logout successful (JWT is stateless, so nothing to destroy)' });
+    res.json({ message: 'Logout successful (JWT is stateless)' });
 });
 
 // ===================== USER ROUTES =====================
 
-// Get current user profile
 app.get('/api/users/profile', requireAuth, async (req, res) => {
     try {
-        const user = await User.findByPk(req.user.id, {
-            attributes: ['id', 'name', 'email', 'role']
-        });
+        const user = await User.findByPk(req.user.id, { attributes: ['id', 'name', 'email', 'role'] });
         if (!user) return res.status(404).json({ error: 'User not found' });
         res.json(user);
     } catch (error) {
@@ -132,7 +134,7 @@ app.get('/api/users/profile', requireAuth, async (req, res) => {
     }
 });
 
-// Get all users (Admin only)
+// Admin-only: list all users
 app.get('/api/users', requireAuth, requireAdmin, async (req, res) => {
     try {
         const users = await User.findAll({ attributes: ['id', 'name', 'email', 'role'] });
@@ -145,7 +147,6 @@ app.get('/api/users', requireAuth, requireAdmin, async (req, res) => {
 
 // ===================== PROJECT ROUTES =====================
 
-// List projects
 app.get('/api/projects', requireAuth, async (req, res) => {
     try {
         const projects = await Project.findAll({
@@ -158,7 +159,6 @@ app.get('/api/projects', requireAuth, async (req, res) => {
     }
 });
 
-// Get single project
 app.get('/api/projects/:id', requireAuth, async (req, res) => {
     try {
         const project = await Project.findByPk(req.params.id, {
@@ -175,7 +175,6 @@ app.get('/api/projects/:id', requireAuth, async (req, res) => {
     }
 });
 
-// Create new project (Manager+ only)
 app.post('/api/projects', requireAuth, requireManager, async (req, res) => {
     try {
         const { name, description, status = 'active' } = req.body;
@@ -187,7 +186,6 @@ app.post('/api/projects', requireAuth, requireManager, async (req, res) => {
     }
 });
 
-// Update project (Manager+ only)
 app.put('/api/projects/:id', requireAuth, requireManager, async (req, res) => {
     try {
         const { name, description, status } = req.body;
@@ -201,7 +199,6 @@ app.put('/api/projects/:id', requireAuth, requireManager, async (req, res) => {
     }
 });
 
-// Delete project (Admin only)
 app.delete('/api/projects/:id', requireAuth, requireAdmin, async (req, res) => {
     try {
         const deletedRowsCount = await Project.destroy({ where: { id: req.params.id } });
@@ -215,7 +212,6 @@ app.delete('/api/projects/:id', requireAuth, requireAdmin, async (req, res) => {
 
 // ===================== TASK ROUTES =====================
 
-// List tasks for project
 app.get('/api/projects/:id/tasks', requireAuth, async (req, res) => {
     try {
         const tasks = await Task.findAll({
@@ -229,7 +225,6 @@ app.get('/api/projects/:id/tasks', requireAuth, async (req, res) => {
     }
 });
 
-// Create task (Manager+ only)
 app.post('/api/projects/:id/tasks', requireAuth, requireManager, async (req, res) => {
     try {
         const { title, description, assignedUserId, priority = 'medium' } = req.body;
@@ -244,14 +239,10 @@ app.post('/api/projects/:id/tasks', requireAuth, requireManager, async (req, res
     }
 });
 
-// Update task
 app.put('/api/tasks/:id', requireAuth, async (req, res) => {
     try {
         const { title, description, status, priority } = req.body;
-        const [updatedRowsCount] = await Task.update(
-            { title, description, status, priority },
-            { where: { id: req.params.id } }
-        );
+        const [updatedRowsCount] = await Task.update({ title, description, status, priority }, { where: { id: req.params.id } });
         if (updatedRowsCount === 0) return res.status(404).json({ error: 'Task not found' });
         const updatedTask = await Task.findByPk(req.params.id);
         res.json(updatedTask);
@@ -261,7 +252,6 @@ app.put('/api/tasks/:id', requireAuth, async (req, res) => {
     }
 });
 
-// Delete task (Manager+ only)
 app.delete('/api/tasks/:id', requireAuth, requireManager, async (req, res) => {
     try {
         const deletedRowsCount = await Task.destroy({ where: { id: req.params.id } });
@@ -273,7 +263,7 @@ app.delete('/api/tasks/:id', requireAuth, requireManager, async (req, res) => {
     }
 });
 
-// Start server
+// ===================== START SERVER =====================
 app.listen(PORT, () => {
     console.log(`Server running on port http://localhost:${PORT}`);
 });

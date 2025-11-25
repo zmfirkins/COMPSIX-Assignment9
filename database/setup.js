@@ -1,10 +1,14 @@
 const { Sequelize, DataTypes } = require('sequelize');
-require('dotenv').config();
+require('dotenv').config({ path: __dirname + '/../.env' }); // ensure correct .env path
+
+// Database config with defaults
+const DB_TYPE = process.env.DB_TYPE || 'sqlite';
+const DB_NAME = process.env.DB_NAME || 'task_management.db';
 
 // Initialize database connection
 const db = new Sequelize({
-    dialect: process.env.DB_TYPE,
-    storage: `database/${process.env.DB_NAME}` || 'database/company_projects.db',
+    dialect: DB_TYPE,
+    storage: `database/${DB_NAME}`,
     logging: false
 });
 
@@ -28,15 +32,14 @@ const User = db.define('User', {
         type: DataTypes.STRING,
         allowNull: false
     },
-  // Add role field to User model
     role: {
-    type: DataTypes.STRING,
-    allowNull: false,
-    defaultValue: 'employee',
-    validate: {
-        isIn: [['employee', 'manager', 'admin']]
+        type: DataTypes.STRING,
+        allowNull: false,
+        defaultValue: 'employee',
+        validate: {
+            isIn: [['employee', 'manager', 'admin']]
+        }
     }
-}   
 });
 
 // Project Model
@@ -85,7 +88,7 @@ const Task = db.define('Task', {
     }
 });
 
-// Define Relationships
+// Relationships
 User.hasMany(Project, { foreignKey: 'managerId', as: 'managedProjects' });
 Project.belongsTo(User, { foreignKey: 'managerId', as: 'manager' });
 
@@ -100,7 +103,6 @@ async function initializeDatabase() {
     try {
         await db.authenticate();
         console.log('Database connection established successfully.');
-        
         await db.sync({ force: false });
         console.log('Database synchronized successfully.');
     } catch (error) {
